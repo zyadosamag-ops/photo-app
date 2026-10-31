@@ -25,7 +25,7 @@ label{display:block;font-size:.85rem;color:var(--mut);margin:10px 0 4px}
 .chip{white-space:nowrap;padding:6px 14px;border-radius:999px;border:1px solid var(--line);background:var(--card);cursor:pointer}
 .chip.on{background:var(--acc);color:var(--ai);border-color:var(--acc);font-weight:700}
 #cam{display:none;position:relative;margin:0 0 8px;border-radius:16px;overflow:hidden;background:#000}
-video{width:100%;max-height:36vh;display:block;object-fit:cover}
+video{width:100%;max-height:32vh;display:block;object-fit:cover}
 #shut{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);width:66px;height:66px;border-radius:50%;border:5px solid #fff;background:rgba(255,255,255,.35)}
 #shut:active{background:#fff}
 #camx{position:absolute;top:8px;right:8px}
@@ -78,14 +78,14 @@ input[type=file]{display:none}
 <details class="sec"><summary>السجل</summary><div id="hl"></div><button class="b" id="hclr" style="margin-top:8px">امسح السجل</button></details>
 
 <details class="sec" id="sd"><summary>الإعدادات</summary>
-<label>الرسالة المختارة: الاسم</label><input type="text" id="pn">
-<label>نص الرسالة (بتتبعت مع كل صورة)</label><textarea id="pt"></textarea>
+<label>الرسالة المختارة: الاسم</label><input type="text" id="pn" autocorrect="off" autocapitalize="off" spellcheck="false">
+<label>نص الرسالة (بتتبعت مع كل صورة)</label><textarea id="pt" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>
 <div class="row" style="margin-top:8px"><button class="b" id="ps">حفظ الرسالة</button><button class="b" id="pnew">رسالة جديدة</button><button class="b" id="pdel">حذف</button></div>
 <label>Gemini API key (مجاني)</label><input type="password" id="key" placeholder="AIza..." autocomplete="off">
 <label>الموديل</label><input type="text" id="model" dir="ltr" placeholder="gemini-3.8-flash">
 <button class="b" id="ks" style="margin-top:10px">حفظ المفتاح والموديل</button>
 <label class="row" style="color:var(--ink);margin-top:12px"><input type="checkbox" id="ac"> افتح الكاميرا تلقائي أول ما أفتح البرنامج</label>
-<label class="row" style="color:var(--ink)"><input type="checkbox" id="brief"> رد مختصر وسريع (الإجابة النهائية الأول)</label>
+<label class="row" style="color:var(--ink)"><input type="checkbox" id="brief"> رد مختصر وسريع (بيضيف تعليمات من عندي، مقفول من الأول)</label>
 </details>
 
 <script>
@@ -100,9 +100,17 @@ const queue=[];
 if(J('model2','')==='gemini-2.5-flash')S('model2',DM);
 
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;')}
+function cleanMath(s){
+  const p=x=>/^[\w.°]+$/.test(x)?x:'('+x+')';
+  const R=[[/\$([^$\n]*\\[^$\n]*)\$/g,'$1'],[/\\left|\\right/g,''],[/\\(?:text|mathrm|mathbf|operatorname)\{([^{}]*)\}/g,'$1'],[/\^\{?\\circ\}?/g,'°'],[/\\circ/g,'°'],[/\\times/g,'×'],[/\\cdot/g,'·'],[/\\div/g,'÷'],[/\\sim/g,'~'],[/\\(?:implies|Rightarrow|rightarrow|to)(?![a-zA-Z])/g,'⇒'],[/\\leq?(?![a-zA-Z])/g,'≤'],[/\\geq?(?![a-zA-Z])/g,'≥'],[/\\neq/g,'≠'],[/\\approx/g,'≈'],[/\\pm/g,'±'],[/\\pi(?![a-zA-Z])/g,'π'],[/\\angle/g,'∠'],[/\\triangle/g,'△'],[/\\parallel/g,'∥'],[/\\perp/g,'⊥'],[/\\infty/g,'∞'],[/\\%/g,'%'],[/\\[,;! ]/g,' '],[/\$\$([\s\S]+?)\$\$/g,'$1'],[/\$(?=\S)([^$\n]*?\S)\$/g,'$1'],[/\\\(|\\\)|\\\[|\\\]/g,'']];
+  R.forEach(([a,b])=>{s=s.replace(a,b)});
+  for(let i=0;i<4;i++)s=s.replace(/\\d?frac\{([^{}]*)\}\{([^{}]*)\}/g,(m,a,b)=>p(a)+'/'+p(b)).replace(/\\sqrt\{([^{}]*)\}/g,(m,a)=>'√'+p(a));
+  return s.replace(/\^\{([^{}]*)\}/g,'^$1').replace(/_\{([^{}]*)\}/g,'_$1').replace(/\^2(?![\d])/g,'²').replace(/\^3(?![\d])/g,'³');
+}
 function md(s){
   const blocks=[];
   s=esc(s).replace(/```[\w-]*\n?([\s\S]*?)```/g,(m,c)=>{blocks.push('<pre><code>'+c+'</code></pre>');return '\u0000'+(blocks.length-1)+'\u0000'});
+  s=cleanMath(s);
   const inl=t=>t.replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>');
   let o='',list=null,tbl=[];
   const fl=k=>{
@@ -116,12 +124,12 @@ function md(s){
     let m;
     if(!ln.trim())continue;
     if(/^\|/.test(ln)){fl('t');tbl.push(ln.trim());continue}
-    if(m=ln.match(/^\s*[-*•]\s+(.*)/)){fl('ul');if(list!=='ul'){o+='<ul>';list='ul'}o+='<li>'+inl(m[1])+'</li>';continue}
-    if(m=ln.match(/^\s*(\d+)[.)]\s+(.*)/)){fl('ol');if(list!=='ol'){o+='<ol start="'+m[1]+'">';list='ol'}o+='<li>'+inl(m[2])+'</li>';continue}
+    if(m=ln.match(/^\s*[-*•]\s+(.*)/)){fl('ul');if(list!=='ul'){o+='<ul>';list='ul'}o+='<li dir="auto">'+inl(m[1])+'</li>';continue}
+    if(m=ln.match(/^\s*(\d+)[.)]\s+(.*)/)){fl('ol');if(list!=='ol'){o+='<ol start="'+m[1]+'">';list='ol'}o+='<li dir="auto">'+inl(m[2])+'</li>';continue}
     fl();
     if(/^\u0000\d+\u0000$/.test(ln.trim())){o+=ln.trim();continue}
     if(m=ln.match(/^(#{1,4})\s+(.*)/)){const n=m[1].length+2;o+='<h'+n+'>'+inl(m[2])+'</h'+n+'>';continue}
-    o+='<p>'+inl(ln)+'</p>';
+    o+='<p dir="auto">'+inl(ln)+'</p>';
   }
   fl();
   return o.replace(/\u0000(\d+)\u0000/g,(m,i)=>blocks[i]);
@@ -140,13 +148,15 @@ function renderChips(){
   presets.forEach((p,i)=>{const b=document.createElement('button');b.className='chip'+(i===sel?' on':'');b.textContent=p.n;b.onclick=()=>{sel=i;S('sel',i);renderChips();fillEd()};c.appendChild(b)});
 }
 function fillEd(){$('pn').value=presets[sel].n;$('pt').value=presets[sel].t}
-$('ps').onclick=()=>{presets[sel]={n:$('pn').value.trim()||'رسالة',t:$('pt').value.trim()};S('presets',presets);renderChips()};
+function savePreset(){presets[sel]={n:$('pn').value.trim()||'رسالة',t:$('pt').value.trim()};S('presets',presets)}
+$('pn').oninput=()=>{savePreset();renderChips()};$('pt').oninput=savePreset;
+$('ps').onclick=()=>{savePreset();renderChips();$('ps').textContent='اتحفظ ✓';setTimeout(()=>$('ps').textContent='حفظ الرسالة',1200)};
 $('pnew').onclick=()=>{presets.push({n:'رسالة جديدة',t:''});sel=presets.length-1;S('presets',presets);S('sel',sel);renderChips();fillEd();$('pt').focus()};
 $('pdel').onclick=()=>{if(presets.length<2)return;presets.splice(sel,1);sel=0;S('presets',presets);S('sel',0);renderChips();fillEd()};
 $('ks').onclick=()=>{S('gkey',$('key').value.trim());S('model2',$('model').value.trim()||DM);$('ks').textContent='اتحفظ ✓';setTimeout(()=>$('ks').textContent='حفظ المفتاح والموديل',1200)};
 $('auto').checked=J('auto',true);$('auto').onchange=()=>S('auto',$('auto').checked);
 $('ac').checked=J('autocam',true);$('ac').onchange=()=>S('autocam',$('ac').checked);
-$('brief').checked=J('brief',true);$('brief').onchange=()=>S('brief',$('brief').checked);
+$('brief').checked=J('brief',false);$('brief').onchange=()=>S('brief',$('brief').checked);
 $('key').value=J('gkey','');$('model').value=J('model2',DM);
 if(!J('gkey',''))$('sd').open=true;
 
@@ -189,7 +199,7 @@ function pump(){while(running<3&&queue.length){const j=queue.shift();running++;j
 async function once(m,hist,key,onText,think){
   const ac=new AbortController();let to=setTimeout(()=>ac.abort(),30000);const all=setTimeout(()=>ac.abort(),120000);
   const body={contents:hist};
-  if(J('brief',true))body.systemInstruction={parts:[{text:SYS}]};
+  if(J('brief',false))body.systemInstruction={parts:[{text:SYS}]};
   if(think&&/^gemini-3/.test(m))body.generationConfig={thinkingConfig:{thinkingLevel:'low'}};
   const net=e=>new Error(e&&e.name==='AbortError'?'الرد اتأخر.':'مفيش اتصال أو الطلب اتقطع.');
   try{
@@ -198,15 +208,14 @@ async function once(m,hist,key,onText,think){
     clearTimeout(to);
     if(!r.ok){const d=await r.json().catch(()=>({}));throw Object.assign(new Error(d.error?.message||('خطأ '+r.status)),{status:r.status})}
     const rd=r.body.getReader(),dec=new TextDecoder();let buf='',full='';
+    const feed=ln=>{if(ln.startsWith('data:')){try{const j=JSON.parse(ln.slice(5));const t=(j.candidates?.[0]?.content?.parts||[]).map(p=>p.text||'').join('');if(t){full+=t;onText(full)}}catch(e){}}};
     try{
       for(;;){
         const {done,value}=await rd.read();if(done)break;
         buf+=dec.decode(value,{stream:true});let i;
-        while((i=buf.indexOf('\n'))>=0){
-          const ln=buf.slice(0,i).trim();buf=buf.slice(i+1);
-          if(ln.startsWith('data:')){try{const j=JSON.parse(ln.slice(5));const t=(j.candidates?.[0]?.content?.parts||[]).map(p=>p.text||'').join('');if(t){full+=t;onText(full)}}catch(e){}}
-        }
+        while((i=buf.indexOf('\n'))>=0){feed(buf.slice(0,i).trim());buf=buf.slice(i+1)}
       }
+      feed(buf.trim());
     }catch(e){if(!full)throw net(e)}
     if(!full)throw new Error('مفيش رد (ممكن الصورة اتحجبت). جرّب صورة تانية.');
     return full;
@@ -252,7 +261,8 @@ function newCard(urls){
 }
 function follow(c){
   const q=c.fu.value.trim();
-  if(!q||c.hist[c.hist.length-1].role!=='model')return;
+  if(!q)return;
+  if(c.hist[c.hist.length-1].role!=='model'){c.fu.placeholder='استنى الرد الأول (أو دوس 🔄 أعد)';return}
   c.fu.value='';ask(c,q);
 }
 function ask(c,q){
@@ -309,7 +319,11 @@ $('hclr').onclick=()=>{S(HK,[]);renderH()};
 
 renderChips();fillEd();renderH();renderTray();
 if(J('autocam',true)&&J('gkey',''))camOn(true);
-document.addEventListener('visibilitychange',()=>{if(!document.hidden&&wantCam&&!stream)camOn(true)});
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden||!wantCam)return;
+  const t=stream&&stream.getTracks()[0];
+  if(!t||t.readyState!=='live'){stream=null;camOn(true)}
+});
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 </script>
 </body>
