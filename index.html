@@ -90,6 +90,11 @@ input[type=file]{display:none}
 <label class="row" style="color:var(--ink)"><input type="checkbox" id="brief"> رد مختصر وسريع (بيضيف تعليمات من عندي، مقفول من الأول)</label>
 <label class="row" style="color:var(--ink)"><input type="checkbox" id="nt"> ابعت الإجابة كإشعار (يوصل للساعة)</label>
 <div class="row"><button class="b" id="ntt">جرّب إشعار</button><small id="nts" style="color:var(--mut)"></small></div>
+<label class="row" style="color:var(--ink);margin-top:12px"><input type="checkbox" id="tg"> ابعت الإجابة كمان على تيليجرام (لو إشعارات البرنامج مش بتوصل الساعة)</label>
+<label>Telegram Bot Token</label><input type="password" id="tgt" dir="ltr" placeholder="123456:ABC..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+<label>Telegram Chat ID</label><input type="text" id="tgc" dir="ltr" inputmode="numeric" placeholder="123456789" autocorrect="off" autocapitalize="off" spellcheck="false">
+<div class="row" style="margin-top:8px"><button class="b" id="tgf">اكتشف Chat ID</button><button class="b" id="tgx">جرّب تيليجرام</button></div>
+<small id="tgm" style="color:var(--mut)"></small>
 </details>
 
 <script>
@@ -185,6 +190,34 @@ async function notify(title,body){
     return true;
   }catch(e){return false}
 }
+const tgOk=()=>!!(J('tgt','')&&J('tgc',''));
+async function tgSend(text){
+  try{
+    const r=await fetch('https://api.telegram.org/bot'+J('tgt','')+'/sendMessage',{method:'POST',body:new URLSearchParams({chat_id:J('tgc',''),text,disable_web_page_preview:'true'})});
+    const d=await r.json().catch(()=>null);
+    return d?{ok:!!d.ok,msg:d.description||''}:{ok:r.ok,msg:''};
+  }catch(e){return {ok:null,msg:''}}
+}
+$('tg').checked=J('tg',false);$('tg').onchange=()=>S('tg',$('tg').checked);
+$('tgt').value=J('tgt','');$('tgc').value=J('tgc','');
+$('tgt').oninput=()=>S('tgt',$('tgt').value.trim());$('tgc').oninput=()=>S('tgc',$('tgc').value.trim());
+$('tgx').onclick=async()=>{
+  if(!tgOk()){$('tgm').textContent='اكتب الـ Token والـ Chat ID الأول';return}
+  $('tgm').textContent='⏳';
+  const r=await tgSend('✓ تجربة من صوّر وابعت');
+  $('tgm').textContent=r.ok===true?'اتبعت ✓ شوف تيليجرام':r.ok===false?'فشل: '+(r.msg||'تأكد من الـ Token والـ Chat ID'):'اتبعت، بس مقدرتش أتأكد. شوف تيليجرام';
+};
+$('tgf').onclick=async()=>{
+  const t=$('tgt').value.trim();if(!t){$('tgm').textContent='اكتب الـ Token الأول';return}
+  $('tgm').textContent='⏳';
+  try{
+    const d=await (await fetch('https://api.telegram.org/bot'+t+'/getUpdates')).json();
+    if(!d.ok){$('tgm').textContent='فشل: '+(d.description||'الـ Token غلط');return}
+    const m=[...d.result].reverse().find(u=>(u.message||u.edited_message||{}).chat);
+    if(!m){$('tgm').textContent='ابعت أي رسالة للبوت في تيليجرام الأول وبعدين دوس تاني';return}
+    const id=String((m.message||m.edited_message).chat.id);$('tgc').value=id;S('tgc',id);$('tgm').textContent='اتلقى ✓ '+id;
+  }catch(e){$('tgm').textContent='مقدرتش أجيبه تلقائي. اكتبه بإيدك'}
+};
 let wl=null;
 async function syncWake(){
   const want=!!stream||running>0||queue.length>0;
@@ -315,13 +348,13 @@ function ask(c,q){
       const a=document.createElement('div');a.className='row';a.innerHTML='<button class="b">🔊 اقرا</button><button class="b">انسخ</button>';
       a.children[0].onclick=()=>speak(t);
       a.children[1].onclick=async e=>{try{await navigator.clipboard.writeText(t);e.target.textContent='اتنسخ ✓'}catch(x){}};
-      g.appendChild(a);c.st.textContent='✓';if(J('notif',false))notify(c.name,plain(t,220));
+      g.appendChild(a);c.st.textContent='✓';if(J('notif',false))notify(c.name,plain(t,220));if(J('tg',false)&&tgOk())tgSend(c.name+'\n\n'+plain(t,1500));
       if(q)c.m.push({r:'u',t:q});c.m.push({r:'m',t});saveH(c);
     }catch(e){
       cancelAnimationFrame(raf);
       if(q)c.hist.pop();
       out.className='ans err';out.textContent=e.message+' ';
-      const b=document.createElement('button');b.className='b';b.textContent='🔄 أعد';b.onclick=()=>{g.remove();ask(c,q)};out.appendChild(b);c.st.textContent='✗';if(J('notif',false))notify(c.name,'⚠️ '+e.message);
+      const b=document.createElement('button');b.className='b';b.textContent='🔄 أعد';b.onclick=()=>{g.remove();ask(c,q)};out.appendChild(b);c.st.textContent='✗';if(J('notif',false))notify(c.name,'⚠️ '+e.message);if(J('tg',false)&&tgOk())tgSend('⚠️ '+c.name+': '+e.message);
     }
   });
   pump();
