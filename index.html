@@ -190,29 +190,36 @@ async function notify(title,body){
     return true;
   }catch(e){return false}
 }
-const tgOk=()=>!!(J('tgt','')&&J('tgc',''));
+const tgChat=()=>String(J('tgc','')).replace(/[^\d-]/g,'');
+const tgOk=()=>!!(cleanTok(J('tgt',''))&&tgChat());
 async function tgSend(text){
   try{
-    const r=await fetch('https://api.telegram.org/bot'+J('tgt','')+'/sendMessage',{method:'POST',body:new URLSearchParams({chat_id:J('tgc',''),text,disable_web_page_preview:'true'})});
+    const r=await fetch('https://api.telegram.org/bot'+cleanTok(J('tgt',''))+'/sendMessage',{method:'POST',body:new URLSearchParams({chat_id:tgChat(),text,disable_web_page_preview:'true'})});
     const d=await r.json().catch(()=>null);
     return d?{ok:!!d.ok,msg:d.description||''}:{ok:r.ok,msg:''};
   }catch(e){return {ok:null,msg:''}}
 }
 $('tg').checked=J('tg',false);$('tg').onchange=()=>S('tg',$('tg').checked);
 $('tgt').value=J('tgt','');$('tgc').value=J('tgc','');
-$('tgt').oninput=()=>S('tgt',$('tgt').value.trim());$('tgc').oninput=()=>S('tgc',$('tgc').value.trim());
+const cleanTok=v=>{const m=String(v).match(/\d{6,}:[A-Za-z0-9_-]{30,}/);return m?m[0]:String(v).replace(/[^0-9A-Za-z:_-]/g,'').replace(/^bot/i,'')};
+const tokNote=t=>/^\d{6,}:[A-Za-z0-9_-]{30,}$/.test(t)?'شكل الـ Token صح ✓ ('+t.length+' حرف)':'الـ Token شكله ناقص أو غلط ('+t.length+' حرف). الصح حوالي 46 حرف';
+const tgHint=m=>/chat not found/i.test(m)?' — الـ Chat ID غلط، أو لسه ما دستش Start للبوت':/not found|unauthorized/i.test(m)?' — الـ Token غلط، انسخه تاني من BotFather':'';
+$('tgt').oninput=()=>{const t=cleanTok($('tgt').value);S('tgt',t);$('tgm').textContent=t?tokNote(t):''};
+$('tgt').onchange=()=>{$('tgt').value=J('tgt','')};
+$('tgc').oninput=()=>S('tgc',$('tgc').value.replace(/[^\d-]/g,''));
+if(J('tgt',''))$('tgm').textContent=tokNote(J('tgt',''));
 $('tgx').onclick=async()=>{
   if(!tgOk()){$('tgm').textContent='اكتب الـ Token والـ Chat ID الأول';return}
   $('tgm').textContent='⏳';
   const r=await tgSend('✓ تجربة من صوّر وابعت');
-  $('tgm').textContent=r.ok===true?'اتبعت ✓ شوف تيليجرام':r.ok===false?'فشل: '+(r.msg||'تأكد من الـ Token والـ Chat ID'):'اتبعت، بس مقدرتش أتأكد. شوف تيليجرام';
+  $('tgm').textContent=r.ok===true?'اتبعت ✓ شوف تيليجرام':r.ok===false?'فشل: '+(r.msg||'تأكد من الـ Token والـ Chat ID')+tgHint(r.msg):'اتبعت، بس مقدرتش أتأكد. شوف تيليجرام';
 };
 $('tgf').onclick=async()=>{
-  const t=$('tgt').value.trim();if(!t){$('tgm').textContent='اكتب الـ Token الأول';return}
+  const t=cleanTok($('tgt').value);if(!t){$('tgm').textContent='اكتب الـ Token الأول';return}
   $('tgm').textContent='⏳';
   try{
     const d=await (await fetch('https://api.telegram.org/bot'+t+'/getUpdates')).json();
-    if(!d.ok){$('tgm').textContent='فشل: '+(d.description||'الـ Token غلط');return}
+    if(!d.ok){$('tgm').textContent='فشل: '+(d.description||'الـ Token غلط')+tgHint(d.description||'');return}
     const m=[...d.result].reverse().find(u=>(u.message||u.edited_message||{}).chat);
     if(!m){$('tgm').textContent='ابعت أي رسالة للبوت في تيليجرام الأول وبعدين دوس تاني';return}
     const id=String((m.message||m.edited_message).chat.id);$('tgc').value=id;S('tgc',id);$('tgm').textContent='اتلقى ✓ '+id;
