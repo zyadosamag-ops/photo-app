@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#14213d">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon.png">
 <title>صوّر وابعت</title>
 <style>
 :root{--bg:#f3f1ec;--ink:#14213d;--mut:#5b6478;--card:#fff;--line:#d9d5cb;--acc:#e07a1f;--ai:#fff}
@@ -86,6 +88,8 @@ input[type=file]{display:none}
 <button class="b" id="ks" style="margin-top:10px">حفظ المفتاح والموديل</button>
 <label class="row" style="color:var(--ink);margin-top:12px"><input type="checkbox" id="ac"> افتح الكاميرا تلقائي أول ما أفتح البرنامج</label>
 <label class="row" style="color:var(--ink)"><input type="checkbox" id="brief"> رد مختصر وسريع (بيضيف تعليمات من عندي، مقفول من الأول)</label>
+<label class="row" style="color:var(--ink)"><input type="checkbox" id="nt"> ابعت الإجابة كإشعار (يوصل للساعة)</label>
+<div class="row"><button class="b" id="ntt">جرّب إشعار</button><small id="nts" style="color:var(--mut)"></small></div>
 </details>
 
 <script>
@@ -160,6 +164,36 @@ $('brief').checked=J('brief',false);$('brief').onchange=()=>S('brief',$('brief')
 $('key').value=J('gkey','');$('model').value=J('model2',DM);
 if(!J('gkey',''))$('sd').open=true;
 
+/* ---------- notifications (to the watch) + keep screen awake ---------- */
+const canNotify=()=>'Notification' in window;
+function ntStatus(){$('nts').textContent=!canNotify()?'مش متاح هنا: افتح البرنامج من أيقونة الشاشة الرئيسية':({granted:'الإذن شغال ✓',denied:'الإذن مرفوض (فعّله من إعدادات الأيفون)',default:'لسه ما اتطلبش الإذن'})[Notification.permission]||''}
+async function askPerm(){let p=canNotify()?Notification.permission:'denied';if(p==='default'){try{p=await Notification.requestPermission()}catch(e){p='denied'}}return p==='granted'}
+$('nt').checked=J('notif',false)&&canNotify()&&Notification.permission==='granted';
+$('nt').onchange=async()=>{if($('nt').checked&&!(await askPerm()))$('nt').checked=false;S('notif',$('nt').checked);ntStatus()};
+$('ntt').onclick=async()=>{const g=await askPerm();ntStatus();if(!g)return;const r=await notify('صوّر وابعت','لو الإشعار ده وصل على الساعة، كل حاجة تمام ✓');if(!r)$('nts').textContent='الإشعار ما اتبعتش'};
+ntStatus();
+function plain(t,max){
+  const s=cleanMath(t).replace(/```[\s\S]*?```/g,' ').replace(/[*_`#>|]/g,'').replace(/^\s*[-•]\s+/gm,'• ').replace(/\n{2,}/g,'\n').trim();
+  return s.length>max?s.slice(0,max-1).trimEnd()+'…':s;
+}
+async function notify(title,body){
+  try{
+    if(!canNotify()||Notification.permission!=='granted')return false;
+    const o={body,lang:'ar',dir:'rtl',tag:'a'+Date.now()};
+    const reg=navigator.serviceWorker&&await navigator.serviceWorker.getRegistration();
+    if(reg&&reg.showNotification)await reg.showNotification(title,o);else new Notification(title,o);
+    return true;
+  }catch(e){return false}
+}
+let wl=null;
+async function syncWake(){
+  const want=!!stream||running>0||queue.length>0;
+  try{
+    if(want&&!wl&&navigator.wakeLock){wl=await navigator.wakeLock.request('screen');wl.addEventListener('release',()=>{wl=null})}
+    else if(!want&&wl){const w=wl;wl=null;await w.release()}
+  }catch(e){wl=null}
+}
+
 /* ---------- camera / photos ---------- */
 function renderTray(){
   const t=$('tray');t.innerHTML='';
@@ -174,11 +208,11 @@ async function camOn(auto){
   if(stream)return;
   try{
     stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});
-    $('vid').srcObject=stream;$('cam').style.display='block';$('camBtn').style.display='none';wantCam=true;
-    stream.getTracks()[0].onended=()=>{stream=null;$('cam').style.display='none';$('camBtn').style.display=''};
+    $('vid').srcObject=stream;$('cam').style.display='block';$('camBtn').style.display='none';wantCam=true;syncWake();
+    stream.getTracks()[0].onended=()=>{stream=null;$('cam').style.display='none';$('camBtn').style.display='';syncWake()};
   }catch(e){if(!auto)$('fcam').click()}
 }
-function camOff(){wantCam=false;if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;$('cam').style.display='none';$('camBtn').style.display=''}
+function camOff(){wantCam=false;if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;$('cam').style.display='none';$('camBtn').style.display='';syncWake()}
 $('camBtn').onclick=()=>camOn();$('camx').onclick=camOff;
 $('shut').onclick=()=>{
   const v=$('vid');if(!v.videoWidth)return;
@@ -195,7 +229,7 @@ $('send').onclick=()=>{const u=photos.slice();photos=[];renderTray();newCard(u)}
 function errCard(t){const d=document.createElement('div');d.className='card ans err';d.textContent=t;$('feed').prepend(d)}
 
 /* ---------- requests (streaming, parallel, auto-fallback) ---------- */
-function pump(){while(running<3&&queue.length){const j=queue.shift();running++;j().finally(()=>{running--;pump()})}}
+function pump(){while(running<3&&queue.length){const j=queue.shift();running++;j().finally(()=>{running--;pump();syncWake()})}syncWake()}
 async function once(m,hist,key,onText,think){
   const ac=new AbortController();let to=setTimeout(()=>ac.abort(),30000);const all=setTimeout(()=>ac.abort(),120000);
   const body={contents:hist};
@@ -281,13 +315,13 @@ function ask(c,q){
       const a=document.createElement('div');a.className='row';a.innerHTML='<button class="b">🔊 اقرا</button><button class="b">انسخ</button>';
       a.children[0].onclick=()=>speak(t);
       a.children[1].onclick=async e=>{try{await navigator.clipboard.writeText(t);e.target.textContent='اتنسخ ✓'}catch(x){}};
-      g.appendChild(a);c.st.textContent='✓';
+      g.appendChild(a);c.st.textContent='✓';if(J('notif',false))notify(c.name,plain(t,220));
       if(q)c.m.push({r:'u',t:q});c.m.push({r:'m',t});saveH(c);
     }catch(e){
       cancelAnimationFrame(raf);
       if(q)c.hist.pop();
       out.className='ans err';out.textContent=e.message+' ';
-      const b=document.createElement('button');b.className='b';b.textContent='🔄 أعد';b.onclick=()=>{g.remove();ask(c,q)};out.appendChild(b);c.st.textContent='✗';
+      const b=document.createElement('button');b.className='b';b.textContent='🔄 أعد';b.onclick=()=>{g.remove();ask(c,q)};out.appendChild(b);c.st.textContent='✗';if(J('notif',false))notify(c.name,'⚠️ '+e.message);
     }
   });
   pump();
@@ -320,7 +354,9 @@ $('hclr').onclick=()=>{S(HK,[]);renderH()};
 renderChips();fillEd();renderH();renderTray();
 if(J('autocam',true)&&J('gkey',''))camOn(true);
 document.addEventListener('visibilitychange',()=>{
-  if(document.hidden||!wantCam)return;
+  if(document.hidden)return;
+  syncWake();
+  if(!wantCam)return;
   const t=stream&&stream.getTracks()[0];
   if(!t||t.readyState!=='live'){stream=null;camOn(true)}
 });
