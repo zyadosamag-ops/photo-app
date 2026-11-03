@@ -3,15 +3,19 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="preconnect" href="https://generativelanguage.googleapis.com" crossorigin>
+<link rel="preconnect" href="https://api.telegram.org" crossorigin>
 <meta name="theme-color" content="#14213d">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="description" content="صوّر الأسئلة واحصل على إجابات سريعة باستخدام Gemini">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon.png">
 <title>صوّر وابعت</title>
 <style>
 :root{--bg:#f3f1ec;--ink:#14213d;--mut:#5b6478;--card:#fff;--line:#d9d5cb;--acc:#e07a1f;--ai:#fff}
 @media (prefers-color-scheme:dark){:root{--bg:#0e1424;--ink:#eef1f8;--mut:#9aa4bb;--card:#18203a;--line:#2a3555;--acc:#f2923a;--ai:#14213d}}
-*{box-sizing:border-box}
+*{box-sizing:border-box;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;background:var(--bg);color:var(--ink);font-family:"Segoe UI",Tahoma,system-ui,sans-serif;line-height:1.6}
 body{padding:max(12px,env(safe-area-inset-top)) 12px max(24px,env(safe-area-inset-bottom));max-width:600px;margin:0 auto}
 button,input,textarea{font:inherit;color:inherit}
@@ -58,24 +62,56 @@ td,th{border:1px solid var(--line);padding:4px 8px}
 .hi img{width:44px;height:44px;object-fit:cover;border-radius:8px}
 .hi small{color:var(--mut)}
 input[type=file]{display:none}
+/* Mini window: works within the app/page, not over other iOS apps */
+#miniToggle{position:fixed;left:14px;bottom:max(18px,env(safe-area-inset-bottom));z-index:40;border:0;border-radius:50px;background:var(--acc);color:#fff;box-shadow:0 5px 18px #0005;padding:12px 17px;font-weight:700;cursor:pointer}
+#miniHeader{display:none;align-items:center;gap:6px;padding:8px 10px;background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:8}
+#miniHeader strong{flex:1;font-size:.9rem}
+#miniHeader button{padding:5px 9px}
+body.mini-mode{max-width:none;padding:0;overflow:hidden}
+body.mini-mode #miniShell{position:fixed;top:max(12px,env(safe-area-inset-top));right:12px;width:min(370px,calc(100vw - 24px));height:min(68dvh,610px);background:var(--bg);border:1px solid var(--line);border-radius:17px;box-shadow:0 12px 40px #0006;z-index:35;display:flex;flex-direction:column;overflow:hidden}
+body.mini-mode #miniHeader{display:flex;flex:none}
+body.mini-mode #miniContent{overflow-y:auto;overscroll-behavior:contain;padding:7px 10px 12px;flex:1;min-height:0}
+body.mini-mode #top{position:relative;top:auto}
+body.mini-mode #top .row>.g{min-width:100px}
+body.mini-mode #top button{font-size:.83rem;padding:7px 9px}
+body.mini-mode #top label{font-size:.75rem}
+body.mini-mode #cam video{max-height:22vh}
+body.mini-mode #feed .card{padding:9px}
+body.mini-mode #miniToggle{display:none}
+body.mini-mode>.sec{display:none}
+body.mini-mode #miniContent{ -webkit-overflow-scrolling:touch }
+body.mini-mode #feed .ans{font-size:1rem}
+button:focus-visible,summary:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
+body.mini-collapsed #miniShell{display:none}
+body.mini-collapsed #miniToggle{display:block}
+@media(max-width:420px){body.mini-mode #miniShell{width:calc(100vw - 24px);height:65dvh}}
 </style>
 </head>
 <body>
+<button id="miniToggle" type="button" aria-label="افتح النافذة الصغيرة">▣ نافذة صغيرة</button>
+<div id="miniShell">
+<div id="miniHeader"><strong>📷 صوّر وابعت — شاشة صغيرة</strong><button class="b" id="miniCollapse" type="button" title="تصغير إلى علامة">—</button><button class="b" id="miniSettings" type="button" title="الإعدادات">⚙</button><button class="b" id="miniFull" type="button" title="شاشة كاملة">⛶</button></div>
+<div id="miniContent">
 <div id="top">
 <div class="chips" id="chips"></div>
 <div id="cam"><video id="vid" playsinline muted autoplay></video><button class="b" id="camx">✕</button><button id="shut" aria-label="صوّر"></button><div id="flash"></div></div>
 <div class="row">
 <button class="b p g" id="camBtn">📷 افتح الكاميرا</button>
-<button class="b g" id="galBtn">🖼 المعرض</button>
+<button class="b g" id="galBtn">🖼 صورة / Screenshot</button>
+<button class="b g" id="natBtn">📸 كاميرا الأيفون (أوضح)</button>
 </div>
 <input type="file" id="fcam" accept="image/*" capture="environment">
 <input type="file" id="fgal" accept="image/*" multiple>
 <label class="row" style="margin:8px 0 0;color:var(--ink)"><input type="checkbox" id="auto"> ابعت كل صورة فوراً <span style="color:var(--mut)">(لو مقفول: صوّر كذا صورة وبعدين ابعت)</span></label>
+<label class="row" style="margin:4px 0 0;color:var(--ink)"><input type="checkbox" id="fast"> ⚡ وضع سريع (موديل أخف)</label>
 <div id="tray"></div>
 <button class="b p" id="send" style="display:none;width:100%">ابعت</button>
 </div>
 
 <div id="feed"></div>
+</div>
+</div>
 
 <details class="sec"><summary>السجل</summary><div id="hl"></div><button class="b" id="hclr" style="margin-top:8px">امسح السجل</button></details>
 
@@ -83,14 +119,16 @@ input[type=file]{display:none}
 <label>الرسالة المختارة: الاسم</label><input type="text" id="pn" autocorrect="off" autocapitalize="off" spellcheck="false">
 <label>نص الرسالة (بتتبعت مع كل صورة)</label><textarea id="pt" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>
 <div class="row" style="margin-top:8px"><button class="b" id="ps">حفظ الرسالة</button><button class="b" id="pnew">رسالة جديدة</button><button class="b" id="pdel">حذف</button></div>
-<label>Gemini API key (مجاني)</label><input type="password" id="key" placeholder="AIza..." autocomplete="off">
+<label>Gemini API key (يتطلب مفتاحًا صالحًا وقد توجد حدود استخدام أو رسوم)</label><input type="password" id="key" placeholder="AIza..." autocomplete="off">
 <label>الموديل</label><input type="text" id="model" dir="ltr" placeholder="gemini-3.8-flash">
 <button class="b" id="ks" style="margin-top:10px">حفظ المفتاح والموديل</button>
 <label class="row" style="color:var(--ink);margin-top:12px"><input type="checkbox" id="ac"> افتح الكاميرا تلقائي أول ما أفتح البرنامج</label>
 <label class="row" style="color:var(--ink)"><input type="checkbox" id="brief"> رد مختصر وسريع (بيضيف تعليمات من عندي، مقفول من الأول)</label>
-<label class="row" style="color:var(--ink)"><input type="checkbox" id="nt"> ابعت الإجابة كإشعار (يوصل للساعة)</label>
+<label class="row" style="color:var(--ink)"><input type="checkbox" id="nt"> اعرض الإجابة كإشعار أثناء تشغيل التطبيق (قد تصل للساعة)</label>
+<small style="color:var(--mut)">على iOS الإشعارات تتطلب تثبيت التطبيق على الشاشة الرئيسية والسماح بها. الإرسال بعد إغلاق التطبيق يحتاج Web Push وخادمًا مستقلًا.</small>
 <div class="row"><button class="b" id="ntt">جرّب إشعار</button><small id="nts" style="color:var(--mut)"></small></div>
 <label class="row" style="color:var(--ink);margin-top:12px"><input type="checkbox" id="tg"> ابعت الإجابة كمان على تيليجرام (لو إشعارات البرنامج مش بتوصل الساعة)</label>
+<label class="row" style="color:var(--ink)"><input type="checkbox" id="split"> ابعت كل سؤال في رسالة منفصلة (تيليجرام والإشعارات)</label>
 <label>Telegram Bot Token</label><input type="password" id="tgt" dir="ltr" placeholder="123456:ABC..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
 <label>Telegram Chat ID</label><input type="text" id="tgc" dir="ltr" inputmode="numeric" placeholder="123456789" autocorrect="off" autocapitalize="off" spellcheck="false">
 <div class="row" style="margin-top:8px"><button class="b" id="tgf">اكتشف Chat ID</button><button class="b" id="tgx">جرّب تيليجرام</button></div>
@@ -99,6 +137,20 @@ input[type=file]{display:none}
 
 <script>
 const $=id=>document.getElementById(id);
+/* A small, resizable-feeling app panel; it cannot appear on top of other iOS apps. */
+function setMini(mode){
+  document.body.classList.toggle('mini-mode',mode!=='full');
+  document.body.classList.toggle('mini-collapsed',mode==='collapsed');
+  $('miniToggle').textContent=mode==='collapsed'?'◉ افتح النافذة':'▣ نافذة صغيرة';
+  $('miniToggle').setAttribute('aria-label',mode==='collapsed'?'افتح النافذة الصغيرة':'حوّل إلى النافذة الصغيرة');
+  if(mode==='collapsed')camOff();
+  try{sessionStorage.setItem('miniMode',mode)}catch(e){}
+}
+$('miniToggle').onclick=()=>setMini('open');
+$('miniCollapse').onclick=()=>setMini('collapsed');
+$('miniFull').onclick=()=>setMini('full');
+$('miniSettings').onclick=()=>{setMini('full');$('sd').open=true;$('sd').scrollIntoView({behavior:'smooth',block:'start'})};
+
 const J=(k,d)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}};
 const S=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));return true}catch(e){return false}};
 const DM='gemini-3.8-flash',FB='gemini-3.5-flash-lite',BASE='https://generativelanguage.googleapis.com/v1beta/models/',HK='hist2';
@@ -106,7 +158,7 @@ const SYS='جاوب بسرعة وباختصار. ابدأ بالإجابة ال�
 const DEF=[{n:'مراجعة',t:'راجع الصورة دي وقولي أي تعديلات أو تحسينات ممكن تتعمل.'},{n:'اشرح',t:'اشرح اللي في الصورة بالتفصيل.'},{n:'حل',t:'حل المسألة اللي في الصورة. اكتب الإجابة النهائية الأول في سطر واحد، وبعدها الخطوات باختصار.'},{n:'ترجم',t:'ترجم النص اللي في الصورة للعربي.'}];
 let presets=J('presets',DEF),sel=Math.min(J('sel',0),presets.length-1),photos=[],stream=null,wantCam=false,running=0;
 const queue=[];
-if(J('model2','')==='gemini-2.5-flash')S('model2',DM);
+if(['gemini-2.5-flash','gemini-2.5-flash-lite'].includes(J('model2','')))S('model2',DM);
 
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;')}
 function cleanMath(s){
@@ -118,7 +170,7 @@ function cleanMath(s){
 }
 function md(s){
   const blocks=[];
-  s=esc(s).replace(/```[\w-]*\n?([\s\S]*?)```/g,(m,c)=>{blocks.push('<pre><code>'+c+'</code></pre>');return '\u0000'+(blocks.length-1)+'\u0000'});
+  s=esc(s).replace(/```[\w-]*\n?([\s\S]*?)```/g,(m,c)=>{blocks.push('<pre><code>'+c+'</code></pre>');return '\u0000'+(blocks.length-1)+'\u0000'}).replace(/`([^`\n]+)`/g,(m,c)=>{blocks.push('<code>'+c+'</code>');return '\u0000'+(blocks.length-1)+'\u0000'});
   s=cleanMath(s);
   const inl=t=>t.replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>');
   let o='',list=null,tbl=[];
@@ -143,11 +195,12 @@ function md(s){
   fl();
   return o.replace(/\u0000(\d+)\u0000/g,(m,i)=>blocks[i]);
 }
+const IQ=()=>J('fast',false)?[1100,.72]:[1600,.85];
 function toUrl(src,max,q){
   return new Promise((res,rej)=>{
     const im=new Image(),isF=src instanceof Blob,u=isF?URL.createObjectURL(src):src;
     im.onload=()=>{const s=Math.min(1,max/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=Math.round(im.width*s);c.height=Math.round(im.height*s);c.getContext('2d').drawImage(im,0,0,c.width,c.height);if(isF)URL.revokeObjectURL(u);res(c.toDataURL('image/jpeg',q))};
-    im.onerror=()=>rej(new Error('مقدرتش أقرا الصورة'));im.src=u;
+    im.onerror=()=>{if(isF)URL.revokeObjectURL(u);rej(new Error('مقدرتش أقرا الصورة. جرّب Screenshot بصيغة PNG أو JPG'))};im.src=u;
   });
 }
 
@@ -164,7 +217,9 @@ $('pnew').onclick=()=>{presets.push({n:'رسالة جديدة',t:''});sel=preset
 $('pdel').onclick=()=>{if(presets.length<2)return;presets.splice(sel,1);sel=0;S('presets',presets);S('sel',0);renderChips();fillEd()};
 $('ks').onclick=()=>{S('gkey',$('key').value.trim());S('model2',$('model').value.trim()||DM);$('ks').textContent='اتحفظ ✓';setTimeout(()=>$('ks').textContent='حفظ المفتاح والموديل',1200)};
 $('auto').checked=J('auto',true);$('auto').onchange=()=>S('auto',$('auto').checked);
-$('ac').checked=J('autocam',true);$('ac').onchange=()=>S('autocam',$('ac').checked);
+$('ac').checked=J('autocam',false);$('ac').onchange=()=>S('autocam',$('ac').checked);
+$('fast').checked=J('fast',false);$('fast').onchange=()=>S('fast',$('fast').checked);
+$('split').checked=J('split',true);$('split').onchange=()=>S('split',$('split').checked);
 $('brief').checked=J('brief',false);$('brief').onchange=()=>S('brief',$('brief').checked);
 $('key').value=J('gkey','');$('model').value=J('model2',DM);
 if(!J('gkey',''))$('sd').open=true;
@@ -190,14 +245,33 @@ async function notify(title,body){
     return true;
   }catch(e){return false}
 }
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+function splitQ(t){
+  const re=/^\s*(?:[-*•]\s*)?(?:\*\*)?\s*(?:السؤال|سؤال|س|Q(?:uestion)?)\s*[(#]?\s*\d+/i,ch=[];let cur=null;
+  for(const ln of t.split('\n')){if(re.test(ln)){if(cur)ch.push(cur.join('\n'));cur=[ln]}else if(cur)cur.push(ln)}
+  if(cur)ch.push(cur.join('\n'));
+  return ch.length>=2?ch:[t];
+}
+function deliver(c,t,fb){
+  const on=J('notif',false),tg=J('tg',false)&&tgOk();if(!on&&!tg)return Promise.resolve();
+  const parts=J('split',true)?splitQ(t):[t],tag=fb?' (موديل أخف)':'';
+  const items=parts.map((x,i)=>({p:x.replace(/^\s*[-*•]\s+/,''),ttl:c.name+(parts.length>1?' ('+(i+1)+'/'+parts.length+')':'')}));
+  if(tg)items.forEach(o=>tgSendQ(o.ttl+tag+'\n\n'+plain(o.p,1500)));
+  return (async()=>{if(on)for(let i=0;i<items.length;i++){notify(items[i].ttl+tag,plain(items[i].p,220));if(i<items.length-1)await sleep(300)}})();
+}
 const tgChat=()=>String(J('tgc','')).replace(/[^\d-]/g,'');
 const tgOk=()=>!!(cleanTok(J('tgt',''))&&tgChat());
 async function tgSend(text){
   try{
     const r=await fetch('https://api.telegram.org/bot'+cleanTok(J('tgt',''))+'/sendMessage',{method:'POST',body:new URLSearchParams({chat_id:tgChat(),text,disable_web_page_preview:'true'})});
     const d=await r.json().catch(()=>null);
-    return d?{ok:!!d.ok,msg:d.description||''}:{ok:r.ok,msg:''};
-  }catch(e){return {ok:null,msg:''}}
+    return d?{ok:!!d.ok,msg:d.description||'',retry:(d.parameters&&d.parameters.retry_after)||0}:{ok:r.ok,msg:'',retry:0};
+  }catch(e){return {ok:null,msg:'',retry:0}}
+}
+let tgChain=Promise.resolve();
+function tgSendQ(text){
+  const job=tgChain.then(async()=>{let r=await tgSend(text);if(r.ok===false&&r.retry){await sleep(Math.min(r.retry,30)*1000+300);r=await tgSend(text)}await sleep(400);return r});
+  tgChain=job.catch(()=>{});return job;
 }
 $('tg').checked=J('tg',false);$('tg').onchange=()=>S('tg',$('tg').checked);
 $('tgt').value=J('tgt','');$('tgc').value=J('tgc','');
@@ -247,40 +321,44 @@ function addUrls(urls){
 async function camOn(auto){
   if(stream)return;
   try{
-    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});
+    if(!navigator.mediaDevices?.getUserMedia)throw new Error('الكاميرا داخل المتصفح غير متاحة');
+    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}},audio:false});
     $('vid').srcObject=stream;$('cam').style.display='block';$('camBtn').style.display='none';wantCam=true;syncWake();
+    $('vid').play().catch(()=>{});
     stream.getTracks()[0].onended=()=>{stream=null;$('cam').style.display='none';$('camBtn').style.display='';syncWake()};
   }catch(e){if(!auto)$('fcam').click()}
 }
-function camOff(){wantCam=false;if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;$('cam').style.display='none';$('camBtn').style.display='';syncWake()}
+function camOff(){wantCam=false;if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;$('vid').srcObject=null;$('cam').style.display='none';$('camBtn').style.display='';syncWake()}
 $('camBtn').onclick=()=>camOn();$('camx').onclick=camOff;
 $('shut').onclick=()=>{
   const v=$('vid');if(!v.videoWidth)return;
-  const s=Math.min(1,1100/Math.max(v.videoWidth,v.videoHeight)),c=document.createElement('canvas');
+  const [mx,qq]=IQ(),s=Math.min(1,mx/Math.max(v.videoWidth,v.videoHeight)),c=document.createElement('canvas');
   c.width=Math.round(v.videoWidth*s);c.height=Math.round(v.videoHeight*s);c.getContext('2d').drawImage(v,0,0,c.width,c.height);
   const f=$('flash');f.style.transition='none';f.style.opacity='.8';requestAnimationFrame(()=>{f.style.transition='opacity .25s';f.style.opacity='0'});
   if(navigator.vibrate)navigator.vibrate(25);
-  addUrls([c.toDataURL('image/jpeg',.72)]);
+  addUrls([c.toDataURL('image/jpeg',qq)]);
 };
 $('galBtn').onclick=()=>$('fgal').click();
-async function files(e){const fs=[...e.target.files];e.target.value='';if(!fs.length)return;try{addUrls(await Promise.all(fs.map(f=>toUrl(f,1100,.72))))}catch(x){errCard(x.message)}}
+$('natBtn').onclick=()=>$('fcam').click();
+async function files(e){const fs=[...e.target.files];e.target.value='';if(!fs.length)return;try{addUrls(await Promise.all(fs.map(f=>toUrl(f,IQ()[0],IQ()[1]))))}catch(x){errCard(x.message)}}
 $('fcam').onchange=files;$('fgal').onchange=files;
 $('send').onclick=()=>{const u=photos.slice();photos=[];renderTray();newCard(u)};
 function errCard(t){const d=document.createElement('div');d.className='card ans err';d.textContent=t;$('feed').prepend(d)}
 
 /* ---------- requests (streaming, parallel, auto-fallback) ---------- */
 function pump(){while(running<3&&queue.length){const j=queue.shift();running++;j().finally(()=>{running--;pump();syncWake()})}syncWake()}
-async function once(m,hist,key,onText,think){
-  const ac=new AbortController();let to=setTimeout(()=>ac.abort(),30000);const all=setTimeout(()=>ac.abort(),120000);
+async function once(m,hist,key,onText,level,fast){
+  const ac=new AbortController();let to=setTimeout(()=>ac.abort(),fast?30000:90000);const all=setTimeout(()=>ac.abort(),fast?120000:180000);
   const body={contents:hist};
   if(J('brief',false))body.systemInstruction={parts:[{text:SYS}]};
-  if(think&&/^gemini-3/.test(m))body.generationConfig={thinkingConfig:{thinkingLevel:'low'}};
+  if(level&&/^gemini-3/.test(m))body.generationConfig={thinkingConfig:{thinkingLevel:level}};
   const net=e=>new Error(e&&e.name==='AbortError'?'الرد اتأخر.':'مفيش اتصال أو الطلب اتقطع.');
   try{
     let r;
     try{r=await fetch(BASE+encodeURIComponent(m)+':streamGenerateContent?alt=sse',{method:'POST',signal:ac.signal,headers:{'Content-Type':'application/json','x-goog-api-key':key},body:JSON.stringify(body)})}catch(e){throw net(e)}
     clearTimeout(to);
     if(!r.ok){const d=await r.json().catch(()=>({}));throw Object.assign(new Error(d.error?.message||('خطأ '+r.status)),{status:r.status})}
+    if(!r.body?.getReader)throw new Error('المتصفح لا يدعم استقبال الرد المتدفق. حدّث iOS.');
     const rd=r.body.getReader(),dec=new TextDecoder();let buf='',full='';
     const feed=ln=>{if(ln.startsWith('data:')){try{const j=JSON.parse(ln.slice(5));const t=(j.candidates?.[0]?.content?.parts||[]).map(p=>p.text||'').join('');if(t){full+=t;onText(full)}}catch(e){}}};
     try{
@@ -296,19 +374,22 @@ async function once(m,hist,key,onText,think){
   }finally{clearTimeout(to);clearTimeout(all)}
 }
 const retriable=e=>!e.status||e.status===404||e.status===429||e.status>=500||/no longer|not found|not supported/i.test(e.message);
-async function run(hist,onText,onNote){
+const lvl={};
+async function run(hist,onText,onNote,info){
   const key=J('gkey','');
-  if(!key){$('sd').open=true;throw new Error('حط الـ API key في الإعدادات الأول.')}
-  const ms=[J('model2',DM)];if(ms[0]!==FB)ms.push(FB);
+  if(!key){setMini('full');$('sd').open=true;throw new Error('حط الـ API key في الإعدادات الأول.')}
+  const fast=J('fast',false),main=J('model2',DM),ord=fast?[FB,main]:[main,FB],ms=ord.filter((m,i)=>ord.indexOf(m)===i);
+  const LVS=fast?['minimal','low',null]:[null];
   let last;
   for(let i=0;i<ms.length;i++){
-    try{return await once(ms[i],hist,key,onText,true)}
-    catch(e){
-      if(e.status===400&&/think/i.test(e.message)){try{return await once(ms[i],hist,key,onText,false)}catch(e2){e=e2}}
-      last=e;
-      if(!retriable(e))throw e;
-      if(i<ms.length-1)onNote('↪ موديل أخف');
+    const m=ms[i];let e=null;
+    for(let li=lvl[m+fast]||0;li<LVS.length;li++){
+      try{const t=await once(m,hist,key,onText,LVS[li],fast);lvl[m+fast]=li;if(info)info.model=m;return t}
+      catch(x){e=x;if(x.status===400&&!/api key/i.test(x.message)&&li<LVS.length-1)continue;break}
     }
+    last=e;
+    if(!retriable(e))throw e;
+    if(i<ms.length-1)onNote('↪ موديل تاني');
   }
   throw last;
 }
@@ -339,6 +420,7 @@ function follow(c){
   if(c.hist[c.hist.length-1].role!=='model'){c.fu.placeholder='استنى الرد الأول (أو دوس 🔄 أعد)';return}
   c.fu.value='';ask(c,q);
 }
+const VERIFY='راجع إجابتك السابقة خطوة بخطوة وتأكد من كل رقم. لو لقيت أي غلط صححه بوضوح، ولو كل حاجة صح قول "الإجابة صحيحة" باختصار.';
 function ask(c,q){
   const g=document.createElement('div');
   if(q){const d=document.createElement('div');d.className='q';d.textContent=q;g.appendChild(d)}
@@ -346,23 +428,32 @@ function ask(c,q){
   c.body.appendChild(g);c.st.textContent='⏳';
   queue.push(async()=>{
     if(q)c.hist.push({role:'user',parts:[{text:q}]});
-    let raf=0,cur='';
+    let raf=0,cur='',t;const info={};
     try{
-      const t=await run(c.hist,x=>{cur=x;if(!raf)raf=requestAnimationFrame(()=>{raf=0;out.innerHTML=md(cur)})},n=>c.st.textContent=n);
-      cancelAnimationFrame(raf);
-      c.hist.push({role:'model',parts:[{text:t}]});
-      out.innerHTML=md(t);
-      const a=document.createElement('div');a.className='row';a.innerHTML='<button class="b">🔊 اقرا</button><button class="b">انسخ</button>';
-      a.children[0].onclick=()=>speak(t);
-      a.children[1].onclick=async e=>{try{await navigator.clipboard.writeText(t);e.target.textContent='اتنسخ ✓'}catch(x){}};
-      g.appendChild(a);c.st.textContent='✓';if(J('notif',false))notify(c.name,plain(t,220));if(J('tg',false)&&tgOk())tgSend(c.name+'\n\n'+plain(t,1500));
-      if(q)c.m.push({r:'u',t:q});c.m.push({r:'m',t});saveH(c);
+      t=await run(c.hist,x=>{cur=x;if(!raf)raf=requestAnimationFrame(()=>{raf=0;out.innerHTML=md(cur)})},n=>c.st.textContent=n,info);
     }catch(e){
       cancelAnimationFrame(raf);
       if(q)c.hist.pop();
       out.className='ans err';out.textContent=e.message+' ';
-      const b=document.createElement('button');b.className='b';b.textContent='🔄 أعد';b.onclick=()=>{g.remove();ask(c,q)};out.appendChild(b);c.st.textContent='✗';if(J('notif',false))notify(c.name,'⚠️ '+e.message);if(J('tg',false)&&tgOk())tgSend('⚠️ '+c.name+': '+e.message);
+      const b=document.createElement('button');b.className='b';b.textContent='🔄 أعد';b.onclick=()=>{g.remove();ask(c,q)};out.appendChild(b);c.st.textContent='✗';
+      if(J('notif',false))notify(c.name,'⚠️ '+e.message);
+      if(J('tg',false)&&tgOk())tgSendQ('⚠️ '+c.name+': '+e.message);
+      return;
     }
+    cancelAnimationFrame(raf);
+    c.hist.push({role:'model',parts:[{text:t}]});
+    const fb=!!info.model&&info.model!==(J('fast',false)?FB:J('model2',DM));
+    try{
+      out.innerHTML=md(t);
+      if(fb){const w=document.createElement('div');w.className='q';w.textContent='⚠️ الإجابة دي جت من الموديل الأخف ('+info.model+') لأن الأساسي فشل أو اتأخر. للتأكد دوس ✅ تحقق.';g.appendChild(w)}
+      const a=document.createElement('div');a.className='row';a.innerHTML='<button class="b">🔊 اقرا</button><button class="b">انسخ</button><button class="b">✅ تحقق</button>';
+      a.children[0].onclick=()=>speak(t);
+      a.children[1].onclick=async e=>{try{await navigator.clipboard.writeText(t);e.target.textContent='اتنسخ ✓'}catch(x){e.target.textContent='تعذر النسخ — حدّد النص وانسخه'}};
+      a.children[2].onclick=e=>{e.target.disabled=true;ask(c,VERIFY)};
+      g.appendChild(a);c.st.textContent=fb?'✓⚠️':'✓';
+      if(q)c.m.push({r:'u',t:q});c.m.push({r:'m',t});saveH(c);
+    }catch(x){}
+    deliver(c,t,fb).catch(()=>{});
   });
   pump();
 }
@@ -392,9 +483,10 @@ function renderH(){
 $('hclr').onclick=()=>{S(HK,[]);renderH()};
 
 renderChips();fillEd();renderH();renderTray();
-if(J('autocam',true)&&J('gkey',''))camOn(true);
+try{const m=sessionStorage.getItem('miniMode');if(m==='open'||m==='collapsed')setMini(m)}catch(e){}
+if(J('autocam',false)&&J('gkey','')&&!document.body.classList.contains('mini-collapsed'))camOn(true);
 document.addEventListener('visibilitychange',()=>{
-  if(document.hidden)return;
+  if(document.hidden){if(stream)camOff();return;}
   syncWake();
   if(!wantCam)return;
   const t=stream&&stream.getTracks()[0];
